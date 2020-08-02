@@ -1,0 +1,16 @@
+<RCC>
+  <qresource prefix="newPrefix">
+    <file>过滤.png</file>
+    <file>盒子.png</file>
+    <file>多选.png</file>
+    <file>多选1.png</file>
+    <file>右.png</file>
+    <file>左.png</file>
+    <file>备份.png</file>
+    <file>导出.png</file>
+    <file>title.ico</file>
+    <file>开始.png</file>
+    <file>停止.png</file>
+    <file>钥匙.png</file>
+  </qresource>
+</RCC>

@@ -1,0 +1,14 @@
+1.
+pyinstaller --paths C:\Users\only_\AppData\Local\Programs\Python\Python37\Lib\site-packages\PyQt5\Qt\bin -w -i ./UI/title.ico Qword.py
+2.
+修改DigWord.spec  三个数组添加元素(pathex,hiddenimports,hookspath)
+a = Analysis(['main.py'],
+             pathex=[os.path.join(DISTPATH, 'obf', 'temp'), ...],
+             binaries=[],
+             datas=[],
+             hiddenimports=['pytransform', ...],
+             hookspath=[os.path.join(DISTPATH, 'obf', 'temp'), ...],
+pyz = PYZ(a.pure, a.zipped_data,
+             cipher=block_cipher)
+3.
+pyarmor pack -s Qword.spec Qword.py
