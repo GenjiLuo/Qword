@@ -6,16 +6,14 @@ import datetime
 import requests
 import configparser
 from UI.ui_win import Ui_Form
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidgetItem, QFileDialog, QMessageBox
 from spider.search_class import SearchClass
-from collections import Counter
-from threading import Lock, Thread
 from dialog_win import dialog_wiin
 from filter_win import FilterWindow
 from contain_win import ContainWindow
-sys.setrecursionlimit(1000000000)
-
+from db_class import db_class
+from rsa_class import rsa_class
 
 class MainWindow(QMainWindow, Ui_Form):
 
@@ -41,9 +39,17 @@ class MainWindow(QMainWindow, Ui_Form):
         self.timer = QTimer()
         self.timer.timeout.connect(self.run_time)
 
-        self.lock = Lock()
-        self.result_key = []  # 结果集
         self.verify_flag = 1  # 验证标识 1为可以拨号
+        self.wordDict = {}    # 结果集
+        self.wordCount = 0
+
+        self.rsa = rsa_class()
+        self.rsa.Sig_auth.connect(self.close)
+        self.rsa.start()
+
+    def close(self):
+        QMessageBox.warning(self, '错误', '已过期')
+        sys.exit(0)
 
     def outExcel(self):
         try:
@@ -85,8 +91,9 @@ class MainWindow(QMainWindow, Ui_Form):
             self.spinBox_time.setDisabled(status)
             self.pushButton_run.setDisabled(status)
             if status:
-                self.result_key = []
                 self.time_cont = 0
+                self.wordDict = {}
+                self.wordCount = 0
                 self.timer.start(1000)
                 self.label_status.setText('运行中...')
                 self.label_status.setStyleSheet('color: rgb(0, 217, 0);')
@@ -115,7 +122,7 @@ class MainWindow(QMainWindow, Ui_Form):
         try:
             text = self.textEdit.toPlainText()
             if text.strip():
-                id = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                self.id = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
                 key_list = text.split('\n')
                 engine_list = []
                 if self.checkBox_PCbaidu.isChecked():
@@ -133,14 +140,20 @@ class MainWindow(QMainWindow, Ui_Form):
                 timeout = self.spinBox_time.text()
 
                 self.button_status(True)
-
-                self.searchOBJ = SearchClass(id, key_list, engine_list, level, thread, timeout)
+                self.db = db_class()
+                self.db.open()
+                self.db.start()
+                self.searchOBJ = SearchClass(key_list, engine_list, level, thread,timeout)
                 self.searchOBJ.Sig_search_result.connect(self.receive)
                 self.searchOBJ.Sig_verify.connect(self.verify)
                 self.searchOBJ.Sig_search_end.connect(self.end)
                 self.searchOBJ.start()
         except Exception as e:
             print(e)
+
+    def end(self):
+        self.button_status(False)
+        self.db.switch = False
 
     def receive(self, items):
         '''
@@ -149,12 +162,13 @@ class MainWindow(QMainWindow, Ui_Form):
         :return:
         '''
         try:
-            self.lock.acquire()
-            self.result_key += items
-            self.label_result.setText(str(len(self.result_key)))
-            self.lock.release()
-            counter = Counter(self.result_key)
-            self.write_table(counter.most_common())
+            self.db.q.put([[self.id, key, self.id, key, self.id, key] for key in items])
+            self.wordCount += len(items)
+            self.label_result.setText(str(self.wordCount))
+            for i in items:
+                self.wordDict[i] = self.wordDict.get(i, 0) + 1
+            result = sorted(self.wordDict.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
+            self.write_table(result)
         except Exception as e:
             print(e)
 
@@ -179,12 +193,14 @@ class MainWindow(QMainWindow, Ui_Form):
         :return:
         '''
         try:
-            if self.verify_flag:
-                self.verify_flag = 0
-                task = Thread(target=self.connect)
-                task.start()
+            pass
+            # if self.verify_flag:
+            #     self.verify_flag = 0
+            #     task = Thread(target=self.connect)
+            #     task.start()
         except Exception as e:
             print(e)
+
     def connect(self):
         '''
         重新拨号
@@ -218,14 +234,10 @@ class MainWindow(QMainWindow, Ui_Form):
         try:
             if hasattr(self, 'searchOBJ'):
                 self.searchOBJ.flag = 0
-                for task in self.searchOBJ.task_list: task.cancel()
                 self.label_status.setText('关闭中...')
                 self.label_status.setStyleSheet('color: #ff55ff;')
         except Exception as e:
             print(e)
-
-    def end(self):
-        self.button_status(False)
 
     def open_sub(self):
         self.d_win = dialog_wiin()
