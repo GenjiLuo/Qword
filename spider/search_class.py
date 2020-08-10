@@ -114,7 +114,7 @@ class SearchClass(QThread):
             if status_code1 + status_code2 > 400:
                 time.sleep(random.uniform(1, 3))
                 self.Sig_verify.emit()
-                time.sleep(1)
+                time.sleep(10)
                 return self.PCbaidu(key)
             result = copy.deepcopy(rs + sugrec)
             return result
