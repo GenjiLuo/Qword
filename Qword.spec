@@ -4,11 +4,11 @@ block_cipher = None
 
 
 a = Analysis(['Qword.py'],
-             pathex=[os.path.join(DISTPATH, 'obf', 'temp'),'C:\\Users\\only_\\AppData\\Local\\Programs\\Python\\Python37\\Lib\\site-packages\\PyQt5\\Qt\\bin', 'E:\\Qword'],
+             pathex=['C:\\Users\\only_\\AppData\\Local\\Programs\\Python\\Python37\\Lib\\site-packages\\PyQt5\\Qt\\bin', 'E:\\Qword'],
              binaries=[],
              datas=[],
-             hiddenimports=['pytransform'],
-             hookspath=[os.path.join(DISTPATH, 'obf', 'temp')],
+             hiddenimports=[],
+             hookspath=[],
              runtime_hooks=[],
              excludes=[],
              win_no_prefer_redirects=False,

@@ -732,6 +732,12 @@ QSpinBox::down-button:pressed{
     <bool>false</bool>
    </attribute>
    <attribute name="horizontalHeaderStretchLastSection">
+    <bool>false</bool>
+   </attribute>
+   <attribute name="verticalHeaderVisible">
+    <bool>true</bool>
+   </attribute>
+   <attribute name="verticalHeaderHighlightSections">
     <bool>true</bool>
    </attribute>
    <column>

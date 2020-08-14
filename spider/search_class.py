@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 import urllib3
 from PyQt5.QtCore import pyqtSignal, QThread
-from threading import Thread
+from threading import Thread,Lock
 from settings import *
 import requests
 from lxml import etree
@@ -9,19 +9,23 @@ import re
 import time
 import random
 import copy
+from db_class import db_class
+
 urllib3.disable_warnings()
 
-class SearchClass(QThread):
 
+class SearchClass(QThread):
     # 创建信号结果list传给主窗口
-    Sig_search_result = pyqtSignal(list)
+    Sig_result = pyqtSignal(list)
+    Sig_result_count = pyqtSignal(str)
     Sig_search_end = pyqtSignal()
     Sig_verify = pyqtSignal()
 
-    def __init__(self, keys_list=None, engine_list=None, level=None, thread=None, timeout=None):
+    def __init__(self, id=None,keys_list=None, engine_list=None, level=None, thread=None, timeout=None):
         super(SearchClass, self).__init__()
 
         self.flag = 1
+        self.id = id
         self.keys_list = keys_list
         self.engine_list = engine_list
         self.level = int(level)
@@ -30,7 +34,12 @@ class SearchClass(QThread):
         self.result_list = []
         self.old_set = set()
         self.getList()
-
+        self.db = db_class()
+        self.db.open()
+        self.db.start()
+        self.wordCount = 0
+        self.wordDict = {}
+        self.lock = Lock()
         self.spiderFunc = {
             'pcbaidu': self.PCbaidu,
             'pcsogou': self.PCsogou,
@@ -55,6 +64,7 @@ class SearchClass(QThread):
             print(e)
         finally:
             self.Sig_search_end.emit()
+            self.db.switch = False
 
     def get_data(self, func, key, count):
         try:
@@ -63,9 +73,18 @@ class SearchClass(QThread):
                 result = [li for li in result if all(F.upper() not in li.upper() for F in self.filter if F.strip())]
             if self.contain:
                 result = [li for li in result if any(C.upper() in li.upper() for C in self.contain if C.strip())]
-            time.sleep(0.5)
-            self.Sig_search_result.emit(result)
+            result = copy.deepcopy(result)
             self.result_list += result
+            self.db.q.put([[self.id, key, self.id, key, self.id, key] for key in result])
+            self.lock.acquire()
+            self.wordCount += len(result)
+            for i in result:
+                self.wordDict[i] = self.wordDict.get(i, 0) + 1
+            result = copy.deepcopy(sorted(self.wordDict.items(), key=lambda kv: (kv[1], kv[0]), reverse=True))
+            self.Sig_result.emit(result)
+            self.Sig_result_count.emit(str(self.wordCount))
+            self.lock.release()
+            time.sleep(0.5)
             return None
         except Exception as e:
             if count < 3:
@@ -82,7 +101,7 @@ class SearchClass(QThread):
                         tasks = [Thread(target=self.get_data, args=(func, key, 0)) for key in
                                  result_list[n:n + self.thread_count]]
                         for t in tasks:
-                            time.sleep(0.05)
+                            time.sleep(0.3)
                             t.start()
                         for t in tasks: t.join()
                 count += 1
@@ -116,8 +135,7 @@ class SearchClass(QThread):
                 self.Sig_verify.emit()
                 time.sleep(10)
                 return self.PCbaidu(key)
-            result = copy.deepcopy(rs + sugrec)
-            return result
+            return rs + sugrec
         except Exception as e:
             raise e
 
@@ -150,8 +168,7 @@ class SearchClass(QThread):
                 self.Sig_verify.emit()
                 time.sleep(10)
                 return self.Mbaidu(key)
-            result = copy.deepcopy(rs + sugrec)
-            return result
+            return rs + sugrec
         except Exception as e:
             raise e
 
@@ -180,8 +197,7 @@ class SearchClass(QThread):
                 self.Sig_verify.emit()
                 time.sleep(10)
                 return self.PCsogou(key)
-            result = copy.deepcopy(rs + sugrec)
-            return result
+            return rs + sugrec
         except Exception as e:
             raise e
 
@@ -213,8 +229,7 @@ class SearchClass(QThread):
                 self.Sig_verify.emit()
                 time.sleep(10)
                 return self.Msogou(key)
-            result = copy.deepcopy(rs + sugrec)
-            return result
+            return rs + sugrec
         except Exception as e:
             raise e
 
@@ -245,7 +260,6 @@ class SearchClass(QThread):
                 self.Sig_verify.emit()
                 time.sleep(10)
                 return self.Msm(key)
-            result = copy.deepcopy(rs + sugrec)
-            return result
+            return rs + sugrec
         except Exception as e:
             raise e

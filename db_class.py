@@ -92,10 +92,13 @@ class db_class(QThread):
     # 执行函数
     def run(self):
         try:
-            while self.switch:
-                time.sleep(0.1)
-                if not self.q.empty():
-                    self.insert(self.q.get())
+            while self.switch or not self.q.empty():
+                try:
+                    if not self.q.empty():
+                        self.insert(self.q.get())
+                    time.sleep(0.001)
+                except Exception as e:
+                    print(e)
         except Exception as e:
             print(e)
         finally:

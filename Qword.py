@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import datetime
+from threading import Thread,Lock
 import requests
 import configparser
 from UI.ui_win import Ui_Form
@@ -12,7 +13,6 @@ from spider.search_class import SearchClass
 from dialog_win import dialog_wiin
 from filter_win import FilterWindow
 from contain_win import ContainWindow
-from db_class import db_class
 from rsa_class import rsa_class
 
 class MainWindow(QMainWindow, Ui_Form):
@@ -22,7 +22,8 @@ class MainWindow(QMainWindow, Ui_Form):
         self.setupUi(self)
         self.retranslateUi(self)
         self.setFixedSize(self.width(), self.height())
-        self.tableWidget.setColumnWidth(0, 400)
+        self.tableWidget.setColumnWidth(0, 350)
+        self.tableWidget.setColumnWidth(1, 150)
 
         self.getIP()
         self.read_config()
@@ -40,12 +41,11 @@ class MainWindow(QMainWindow, Ui_Form):
         self.timer.timeout.connect(self.run_time)
 
         self.verify_flag = 1  # 验证标识 1为可以拨号
-        self.wordDict = {}    # 结果集
-        self.wordCount = 0
-
-        self.rsa = rsa_class()
-        self.rsa.Sig_auth.connect(self.close)
-        self.rsa.start()
+        self.lock = Lock()
+        self.result = []
+        # self.rsa = rsa_class()
+        # self.rsa.Sig_auth.connect(self.close)
+        # self.rsa.start()
 
     def close(self):
         QMessageBox.warning(self, '错误', '已过期')
@@ -53,23 +53,13 @@ class MainWindow(QMainWindow, Ui_Form):
 
     def outExcel(self):
         try:
-            rowCount = self.tableWidget.rowCount()
-            columnCount = self.tableWidget.columnCount()
-            fileName, ok = QFileDialog.getSaveFileName(None, "文件保存", "./", "CSV (*.csv)")
-            datas = []
-            headers = ['关键词', '词频']
-            for i in range(rowCount):
-                item = []
-                try:
-                    for j in range(columnCount):
-                        item.append(self.tableWidget.item(i, j).text())
-                    datas.append(tuple(item))
-                except Exception as e:
-                    print(e)
-            with open(fileName, 'w', encoding='utf8', newline='')as f:
-                f_csv = csv.writer(f)
-                f_csv.writerow(headers)
-                f_csv.writerows(datas)
+            if self.result:
+                fileName, ok = QFileDialog.getSaveFileName(None, "文件保存", "./", "CSV (*.csv)")
+                headers = ['关键词', '词频']
+                with open(fileName, 'w', encoding='utf8', newline='')as f:
+                    f_csv = csv.writer(f)
+                    f_csv.writerow(headers)
+                    f_csv.writerows(self.result)
         except Exception as e:
             print(e)
 
@@ -80,7 +70,6 @@ class MainWindow(QMainWindow, Ui_Form):
         :return:
         '''
         try:
-            self.textEdit.setDisabled(status)
             self.checkBox_PCbaidu.setDisabled(status)
             self.checkBox_PCsogou.setDisabled(status)
             self.checkBox_Mbaidu.setDisabled(status)
@@ -92,9 +81,8 @@ class MainWindow(QMainWindow, Ui_Form):
             self.pushButton_run.setDisabled(status)
             if status:
                 self.time_cont = 0
-                self.wordDict = {}
-                self.wordCount = 0
                 self.timer.start(1000)
+                self.result.clear()
                 self.label_status.setText('运行中...')
                 self.label_status.setStyleSheet('color: rgb(0, 217, 0);')
                 self.label_result.setText('0')
@@ -140,11 +128,9 @@ class MainWindow(QMainWindow, Ui_Form):
                 timeout = self.spinBox_time.text()
 
                 self.button_status(True)
-                self.db = db_class()
-                self.db.open()
-                self.db.start()
-                self.searchOBJ = SearchClass(key_list, engine_list, level, thread,timeout)
-                self.searchOBJ.Sig_search_result.connect(self.receive)
+                self.searchOBJ = SearchClass(self.id,key_list, engine_list, level, thread,timeout)
+                self.searchOBJ.Sig_result.connect(self.write_table)
+                self.searchOBJ.Sig_result_count.connect(self.write_count)
                 self.searchOBJ.Sig_verify.connect(self.verify)
                 self.searchOBJ.Sig_search_end.connect(self.end)
                 self.searchOBJ.start()
@@ -153,24 +139,9 @@ class MainWindow(QMainWindow, Ui_Form):
 
     def end(self):
         self.button_status(False)
-        self.db.switch = False
 
-    def receive(self, items):
-        '''
-        接收数据
-        :param items:
-        :return:
-        '''
-        try:
-            self.db.q.put([[self.id, key, self.id, key, self.id, key] for key in items])
-            self.wordCount += len(items)
-            self.label_result.setText(str(self.wordCount))
-            for i in items:
-                self.wordDict[i] = self.wordDict.get(i, 0) + 1
-            result = sorted(self.wordDict.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
-            self.write_table(result)
-        except Exception as e:
-            print(e)
+    def write_count(self,count):
+        self.label_result.setText(count)
 
     def write_table(self, items):
         '''
@@ -179,6 +150,7 @@ class MainWindow(QMainWindow, Ui_Form):
         :return:
         '''
         try:
+            self.result = items
             self.tableWidget.setRowCount(0)
             for n, li in enumerate(items[:5000]):
                 self.tableWidget.setRowCount(n + 1)
@@ -193,11 +165,10 @@ class MainWindow(QMainWindow, Ui_Form):
         :return:
         '''
         try:
-            pass
-            # if self.verify_flag:
-            #     self.verify_flag = 0
-            #     task = Thread(target=self.connect)
-            #     task.start()
+            if self.verify_flag:
+                self.verify_flag = 0
+                task = Thread(target=self.connect)
+                task.start()
         except Exception as e:
             print(e)
 
@@ -255,6 +226,7 @@ class MainWindow(QMainWindow, Ui_Form):
     def load_back(self, items):
         try:
             items = sorted(items, key=lambda x: x[1], reverse=True)
+            self.label_result.setText(str(sum([i[1]for i in items])))
             self.write_table(items)
         except Exception as e:
             print(e)
@@ -304,6 +276,9 @@ class MainWindow(QMainWindow, Ui_Form):
         cf.set('setting', 'time', str(self.spinBox_time.value()))
         cf.write(open('./config.ini', "w", encoding='utf-8-sig'))
 
+    def closeEvent(self,event):
+        event.accept()
+        os._exit(0)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
